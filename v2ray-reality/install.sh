@@ -36,23 +36,34 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 
 echo -e "${GREEN}[3/6] 生成 Reality 密钥对...${NC}"
 KEYS=$(/usr/local/bin/xray x25519)
-echo "x25519 输出: $KEYS"
+echo "x25519 原始输出:"
+echo "$KEYS"
+echo "---"
 
-# 新版 Xray 格式: PrivateKey: xxx, Password: xxx (Password 就是 PublicKey)
-# 旧版 Xray 格式: Private key: xxx, Public key: xxx
-PRIVATE_KEY=$(echo "$KEYS" | grep -i "privatekey\|private" | head -1 | awk -F': ' '{print $2}' | tr -d ' \r\n')
-PUBLIC_KEY=$(echo "$KEYS" | grep -i "password\|public" | head -1 | awk -F': ' '{print $2}' | tr -d ' \r\n')
+# 直接用 sed 提取 (适配 PrivateKey: xxx 格式)
+PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*PrivateKey: *\([^ ]*\).*/\1/p' | head -1)
+PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Password: *\([^ ]*\).*/\1/p' | head -1)
+
+# 如果上面没提取到，尝试旧格式 (Private key: xxx)
+if [[ -z "$PRIVATE_KEY" ]]; then
+    PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*Private key: *\([^ ]*\).*/\1/p' | head -1)
+fi
+if [[ -z "$PUBLIC_KEY" ]]; then
+    PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Public key: *\([^ ]*\).*/\1/p' | head -1)
+fi
+
 SHORT_ID=$(openssl rand -hex 8)
+
+echo "提取结果:"
+echo "  PRIVATE_KEY: [$PRIVATE_KEY]"
+echo "  PUBLIC_KEY: [$PUBLIC_KEY]"
+echo "  SHORT_ID: [$SHORT_ID]"
 
 # 验证密钥是否生成成功
 if [[ -z "$PRIVATE_KEY" ]] || [[ -z "$PUBLIC_KEY" ]]; then
-    echo -e "${RED}错误: 密钥生成失败${NC}"
-    echo "提取到的 PRIVATE_KEY: [$PRIVATE_KEY]"
-    echo "提取到的 PUBLIC_KEY: [$PUBLIC_KEY]"
+    echo -e "${RED}错误: 密钥提取失败${NC}"
     exit 1
 fi
-echo "Private Key: ${PRIVATE_KEY}"
-echo "Public Key: ${PUBLIC_KEY}"
 
 echo -e "${GREEN}[4/6] 写入 Xray 配置...${NC}"
 cat > /usr/local/etc/xray/config.json << EOF
