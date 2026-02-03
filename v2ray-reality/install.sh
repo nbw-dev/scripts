@@ -36,9 +36,19 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 
 echo -e "${GREEN}[3/6] 生成 Reality 密钥对...${NC}"
 KEYS=$(/usr/local/bin/xray x25519)
-PRIVATE_KEY=$(echo "$KEYS" | grep "Private" | awk '{print $3}')
-PUBLIC_KEY=$(echo "$KEYS" | grep "Public" | awk '{print $3}')
+# 使用 $NF 提取最后一个字段，兼容不同格式的输出
+PRIVATE_KEY=$(echo "$KEYS" | grep -i "private" | awk '{print $NF}')
+PUBLIC_KEY=$(echo "$KEYS" | grep -i "public" | awk '{print $NF}')
 SHORT_ID=$(openssl rand -hex 8)
+
+# 验证密钥是否生成成功
+if [[ -z "$PRIVATE_KEY" ]] || [[ -z "$PUBLIC_KEY" ]]; then
+    echo -e "${RED}错误: 密钥生成失败，请检查 Xray 安装${NC}"
+    echo "KEYS 输出内容: $KEYS"
+    exit 1
+fi
+echo "Private Key: ${PRIVATE_KEY}"
+echo "Public Key: ${PUBLIC_KEY}"
 
 echo -e "${GREEN}[4/6] 写入 Xray 配置...${NC}"
 cat > /usr/local/etc/xray/config.json << EOF
