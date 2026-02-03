@@ -1,5 +1,5 @@
 #!/bin/bash
-# nbwxray-reality-install.sh
+# nbw-xray-reality-install.sh
 # 一键部署 Xray Reality 节点
 # 同时生成 Clash 和 V2Ray 订阅链接
 
@@ -34,34 +34,35 @@ apt install -y curl openssl nginx
 echo -e "${GREEN}[2/6] 安装 Xray...${NC}"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
 
-echo -e "${GREEN}[3/6] 生成 Reality 密钥对...${NC}"
+echo -e "${GREEN}[3/6] 生成 Reality 密钥对 & 选择最佳 SNI...${NC}"
+
+# 选择最佳 SNI
+SNI_LIST=("www.microsoft.com" "www.apple.com" "www.yahoo.com" "www.samsung.com" "www.amazon.com")
+BEST_SNI="www.microsoft.com"
+MIN_LATENCY=9999
+
+echo "正在从以下域名中选择最佳 SNI..."
+for sni in "${SNI_LIST[@]}"; do
+    LATENCY=$(curl -o /dev/null -s -w "%{time_connect}\n" "https://$sni" || echo 999)
+    echo "  - $sni: ${LATENCY}s"
+    if (( $(echo "$LATENCY < $MIN_LATENCY" | bc -l) )); then
+        MIN_LATENCY=$LATENCY
+        BEST_SNI=$sni
+    fi
+done
+echo -e "${YELLOW}已选择最佳 SNI: ${BEST_SNI} (延迟: ${MIN_LATENCY}s)${NC}"
+
+# 生成密钥
 KEYS=$(/usr/local/bin/xray x25519)
-echo "x25519 原始输出:"
-echo "$KEYS"
-echo "---"
-
-# 直接用 sed 提取 (适配 PrivateKey: xxx 格式)
-PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*PrivateKey: *\([^ ]*\).*/\1/p' | head -1)
-PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Password: *\([^ ]*\).*/\1/p' | head -1)
-
-# 如果上面没提取到，尝试旧格式 (Private key: xxx)
-if [[ -z "$PRIVATE_KEY" ]]; then
-    PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*Private key: *\([^ ]*\).*/\1/p' | head -1)
-fi
-if [[ -z "$PUBLIC_KEY" ]]; then
-    PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Public key: *\([^ ]*\).*/\1/p' | head -1)
-fi
-
+# 终极兼容提取逻辑: 提取冒号后的内容并清理空格
+PRIVATE_KEY=$(echo "$KEYS" | grep -Ei "private" | head -1 | sed 's/.*: *//' | tr -d ' \r\n')
+PUBLIC_KEY=$(echo "$KEYS" | grep -Ei "password|public" | head -1 | sed 's/.*: *//' | tr -d ' \r\n')
 SHORT_ID=$(openssl rand -hex 8)
 
-echo "提取结果:"
-echo "  PRIVATE_KEY: [$PRIVATE_KEY]"
-echo "  PUBLIC_KEY: [$PUBLIC_KEY]"
-echo "  SHORT_ID: [$SHORT_ID]"
-
-# 验证密钥是否生成成功
+# 验证密钥
 if [[ -z "$PRIVATE_KEY" ]] || [[ -z "$PUBLIC_KEY" ]]; then
-    echo -e "${RED}错误: 密钥提取失败${NC}"
+    echo -e "${RED}错误: 密钥提取失败。原始输出如下:${NC}"
+    echo "$KEYS"
     exit 1
 fi
 
@@ -88,8 +89,8 @@ cat > /usr/local/etc/xray/config.json << EOF
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "dest": "www.microsoft.com:443",
-          "serverNames": ["www.microsoft.com"],
+          "dest": "${BEST_SNI}:443",
+          "serverNames": ["${BEST_SNI}"],
           "privateKey": "${PRIVATE_KEY}",
           "shortIds": ["${SHORT_ID}"]
         }
