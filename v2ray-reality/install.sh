@@ -69,18 +69,30 @@ setup_xray() {
     unzip -o /tmp/xray.zip -d /tmp/xray_bin
     mv /tmp/xray_bin/xray $BIN_PATH && chmod +x $BIN_PATH
 
-    # --- 密钥提取核心修复 ---
+    # --- 核心提取逻辑修复：兼容新旧两种输出格式 ---
     $BIN_PATH x25519 > /tmp/xray_keys.txt 2>&1
-    PK=$(grep "Private key:" /tmp/xray_keys.txt | awk '{print $NF}')
-    PUB=$(grep "Public key:" /tmp/xray_keys.txt | awk '{print $NF}')
+    
+    # 提取私钥：匹配 Private key 或 PrivateKey
+    PK=$(grep -i "PrivateKey" /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d ' ')
+    if [ -z "$PK" ]; then PK=$(grep -i "Private key" /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d ' '); fi
+
+    # 提取公钥：匹配 Public key 或 Password (新版x25519输出Password作为公钥) 或 PublicKey
+    PUB=$(grep -i "Password" /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d ' ')
+    if [ -z "$PUB" ]; then PUB=$(grep -i "Public key" /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d ' '); fi
+    if [ -z "$PUB" ]; then PUB=$(grep -i "PublicKey" /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d ' '); fi
+
     SHORT_ID=$(openssl rand -hex 8)
 
+    # 调试输出
+    green "提取到的私钥: $PK"
+    green "提取到的公钥: $PUB"
+
     if [ -z "$PK" ] || [ -z "$PUB" ]; then
-        red "严重错误：无法捕捉到 Reality 密钥！"
-        echo "调试信息：" && cat /tmp/xray_keys.txt
+        red "错误：依然无法捕捉密钥，请检查下方原始输出内容："
+        cat /tmp/xray_keys.txt
         exit 1
     fi
-    # -----------------------
+    # ------------------------------------------
 
     cat <<EOF > $INSTALL_PATH/config.json
 {
