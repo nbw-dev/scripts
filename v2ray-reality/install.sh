@@ -135,7 +135,7 @@ SUBSCRIBE_TOKEN=$(openssl rand -hex 16)
 # ============================================
 # V2Ray 订阅 (Base64 编码的 VLESS 链接)
 # ============================================
-VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.microsoft.com&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#Reality-${SERVER_IP}"
+VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&flow=xtls-rprx-vision&security=reality&sni=${BEST_SNI}&fp=chrome&pbk=${PUBLIC_KEY}&sid=${SHORT_ID}&type=tcp#Reality-${SERVER_IP}"
 
 echo "${VLESS_LINK}" | base64 -w 0 > "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}.txt"
 
@@ -166,7 +166,7 @@ proxies:
     udp: true
     tls: true
     flow: xtls-rprx-vision
-    servername: www.microsoft.com
+    servername: ${BEST_SNI}
     reality-opts:
       public-key: ${PUBLIC_KEY}
       short-id: ${SHORT_ID}
@@ -239,7 +239,7 @@ echo "端口:        ${PORT}"
 echo "UUID:        ${UUID}"
 echo "Public Key:  ${PUBLIC_KEY}"
 echo "Short ID:    ${SHORT_ID}"
-echo "SNI:         www.microsoft.com"
+echo "SNI:         ${BEST_SNI}"
 echo "Fingerprint: chrome"
 echo "Flow:        xtls-rprx-vision"
 echo ""
@@ -272,7 +272,7 @@ Xray Reality 节点信息
 UUID:        ${UUID}
 Public Key:  ${PUBLIC_KEY}
 Short ID:    ${SHORT_ID}
-SNI:         www.microsoft.com
+SNI:         ${BEST_SNI}
 Fingerprint: chrome
 Flow:        xtls-rprx-vision
 
