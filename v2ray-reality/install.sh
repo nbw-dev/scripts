@@ -20,33 +20,18 @@ yellow() { echo -e "\033[33m\033[01m$1\033[0m"; }
 red() { echo -e "\033[31m\033[01m$1\033[0m"; }
 
 prepare_env() {
-    green "正在准备系统环境..."
+    green "正在准备环境..."
     apt update && apt install -y wget curl unzip jq openssl nginx
     systemctl enable nginx && systemctl start nginx
     mkdir -p $INSTALL_PATH $WEB_PATH
 }
 
 get_best_sni() {
-    green "正在筛选最佳 SNI..."
-    local domains="www.microsoft.com www.python.org itunes.apple.com github.io www.amd.com"
     SELECTED_SNI="www.microsoft.com"
-    local best_time=9999
-    for d in $domains; do
-        t1=$(date +%s%3N)
-        if timeout 1 openssl s_client -connect $d:443 -servername $d </dev/null &>/dev/null; then
-            t2=$(date +%s%3N)
-            time_taken=$((t2 - t1))
-            if [[ $time_taken -lt $best_time ]]; then
-                best_time=$time_taken
-                SELECTED_SNI=$d
-            fi
-        fi
-    done
-    green "--> 选定 SNI: ${SELECTED_SNI}"
 }
 
 setup_xray() {
-    green "检测架构并安装 Xray..."
+    green "下载并安装 Xray..."
     local ARCH=$(uname -m)
     local V_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
     [[ "$ARCH" == "aarch64" ]] && V_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip"
@@ -55,20 +40,24 @@ setup_xray() {
     unzip -o /tmp/xray.zip -d /tmp/xray_bin
     mv /tmp/xray_bin/xray $BIN_PATH && chmod +x $BIN_PATH
 
-    # --- 强效密钥捕捉逻辑 (兼容新旧版) ---
-    $BIN_PATH x25519 > /tmp/xray_keys.txt 2>&1
+    # --- 核心提取逻辑：改用【行号提取】 ---
+    # 强制将输出转为纯文本，去掉可能存在的干扰
+    $BIN_PATH x25519 | tr -d '\r' > /tmp/xray_keys.txt 2>&1
     
-    # 提取 PrivateKey (支持 PrivateKey:xxx 和 Private key: xxx)
-    PK=$(grep -i "Private" /tmp/xray_keys.txt | sed 's/.*:[[:space:]]*//' | tr -d '[:space:]')
-    
-    # 提取 PublicKey (新版叫 Password，旧版叫 Public key)
-    PUB=$(grep -Ei "Password|Public" /tmp/xray_keys.txt | head -n 1 | sed 's/.*:[[:space:]]*//' | tr -d '[:space:]')
+    # 第 1 行去掉冒号前的部分，提取私钥
+    PK=$(sed -n '1p' /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    # 如果 awk 没拿到（因为没空格），就用最粗暴的 cut
+    [[ -z "$PK" ]] && PK=$(sed -n '1p' /tmp/xray_keys.txt | cut -d':' -f2 | tr -d '[:space:]')
+
+    # 第 2 行去掉冒号前的部分，提取公钥 (Password)
+    PUB=$(sed -n '2p' /tmp/xray_keys.txt | awk -F': ' '{print $2}' | tr -d '[:space:]')
+    [[ -z "$PUB" ]] && PUB=$(sed -n '2p' /tmp/xray_keys.txt | cut -d':' -f2 | tr -d '[:space:]')
     
     SHORT_ID=$(openssl rand -hex 8)
 
     if [ -z "$PK" ] || [ -z "$PUB" ]; then
-        red "严重错误：即使使用了新逻辑依然无法捕捉密钥！"
-        echo "原始输出如下：" && cat /tmp/xray_keys.txt
+        red "错误：行号提取法依然失败！"
+        echo "当前文件内容：" && cat -A /tmp/xray_keys.txt
         exit 1
     fi
     # ------------------------------------
@@ -152,14 +141,21 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload && systemctl restart xray && systemctl enable xray
-    echo -e "\n"
+        echo -e "\n"
     green "==========================================="
     green "          Xray Reality 安装成功！          "
     green "==========================================="
-    blue "Clash 订阅:" && yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}.yaml"
-    blue "V2Ray 订阅:" && yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}"
-    blue "独立节点:" && echo "${VLESS_LINK}"
+    blue "1. Clash / FLClash 订阅 (推荐):"
+    yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}.yaml"
+    echo "-------------------------------------------"
+    blue "2. V2RayN / v2rayNG 订阅:"
+    yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}"
+    echo "-------------------------------------------"
+    blue "3. 独立 VLESS 节点 (直接导入):"
+    magenta "${VLESS_LINK}"
     green "==========================================="
+    red "提示：请务必确保云商后台已开启 TCP 443 和 8080 端口"
+    echo -e "\n"
 }
 
 main
