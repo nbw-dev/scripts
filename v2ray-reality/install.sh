@@ -1,32 +1,34 @@
 #!/bin/bash
 
 # ==========================================
-# 你的个人定制安装脚本 (全平台配置输出版)
-# 功能：安装 Xray-Reality + 优选 SNI + 生成导入配置
+# 你的个人定制安装脚本 (含自动订阅生成)
+# 功能：Xray-Reality + SNI 优选 + 自动 Nginx 订阅
 # ==========================================
 
 INSTALL_PATH="/usr/local/etc/xray"
 BIN_PATH="/usr/local/bin/xray"
+WEB_PATH="/var/www/html"
 PORT=443
+SUB_PORT=8080  # 订阅服务器端口，可自行修改
+SUB_PATH=$(openssl rand -hex 6) # 随机订阅路径
 SERVER_IP=$(curl -s ifconfig.me)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
 # 颜色
-red() { echo -e "\033[31m\033[01m$1\033[0m"; }
 green() { echo -e "\033[32m\033[01m$1\033[0m"; }
-yellow() { echo -e "\033[33m\033[01m$1\033[0m"; }
 blue() { echo -e "\033[36m\033[01m$1\033[0m"; }
+yellow() { echo -e "\033[33m\033[01m$1\033[0m"; }
 
 check_sys() {
-    apt update && apt install -y wget curl unzip jq openssl
+    apt update && apt install -y wget curl unzip jq openssl nginx
+    systemctl enable nginx
 }
 
 get_best_sni() {
     green "正在筛选最佳 SNI..."
-    local domains="www.swift.com academy.nvidia.com www.cisco.com www.asus.com www.samsung.com www.amd.com github.io cname.vercel-dns.com vercel-dns.com www.python.org itunes.apple.com swdist.apple.com download-installer.cdn.mozilla.net s0.awsstatic.com cdn-dynmedia-1.microsoft.com"
+    local domains="www.swift.com academy.nvidia.com www.cisco.com www.asus.com www.samsung.com www.amd.com github.io cname.vercel-dns.com"
     local best_time=99999
     SELECTED_SNI="www.microsoft.com"
-
     for d in $domains; do
         t1=$(date +%s%3N)
         if timeout 1 openssl s_client -connect $d:443 -servername $d </dev/null &>/dev/null; then
@@ -38,7 +40,6 @@ get_best_sni() {
             fi
         fi
     done
-    green "最佳 SNI: ${SELECTED_SNI}"
 }
 
 install_xray() {
@@ -72,7 +73,59 @@ config_xray() {
 EOF
 }
 
-install_service() {
+# --- 新增：配置 Nginx 订阅服务 ---
+setup_subscription() {
+    green "正在配置订阅服务..."
+    
+    # 修改 Nginx 默认端口，避免冲突
+    cat <<EOF > /etc/nginx/sites-available/default
+server {
+    listen $SUB_PORT;
+    root $WEB_PATH;
+    index index.html;
+    location / {
+        try_files \$uri \$uri/ =404;
+    }
+}
+EOF
+    systemctl restart nginx
+
+    # 生成 VLESS 链接
+    local REMARK="My_Reality_${SERVER_IP}"
+    VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?security=reality&sni=${SELECTED_SNI}&fp=chrome&pbk=${PUB}&sid=${SHORT_ID}&type=tcp&flow=xtls-rprx-vision#${REMARK}"
+    
+    # 写入订阅文件 (Base64 编码)
+    mkdir -p $WEB_PATH
+    echo -n "$VLESS_LINK" | base64 -w 0 > "$WEB_PATH/$SUB_PATH"
+}
+
+show_results() {
+    echo -e "\n"
+    green "==========================================="
+    green "          Xray Reality 安装成功！          "
+    green "==========================================="
+    
+    blue "1. 订阅链接 (直接填入 v2rayN/v2rayNG/小火箭):"
+    yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}"
+    echo "-------------------------------------------"
+    
+    blue "2. VLESS 节点链接 (单节点直接导入):"
+    echo "$VLESS_LINK"
+    echo "-------------------------------------------"
+    
+    blue "3. Clash Meta / Sing-box 配置:"
+    echo "请根据上方 VLESS 链接参数手动转换或查看脚本 show_results 函数。"
+    green "==========================================="
+    echo "提示：如果无法连接，请务必在云服务器防火墙开启 $PORT 和 $SUB_PORT 端口！"
+}
+
+main() {
+    check_sys
+    get_best_sni
+    install_xray
+    config_xray
+    setup_subscription
+    
     cat <<EOF > /etc/systemd/system/xray.service
 [Unit]
 Description=Xray Service
@@ -84,76 +137,6 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
     systemctl daemon-reload && systemctl enable xray && systemctl restart xray
-}
-
-# --- 新增结果输出函数 ---
-show_results() {
-    local REMARK="My_Reality_Node"
-    
-    # 1. V2RayN / V2RayNG 链接 (VLESS 标准格式)
-    local VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?security=reality&sni=${SELECTED_SNI}&fp=chrome&pbk=${PUB}&sid=${SHORT_ID}&type=tcp&flow=xtls-rprx-vision#${REMARK}"
-
-    # 2. Clash Meta (Mihomo) 格式
-    read -r -d '' CLASH_CONFIG <<EOF
-- name: ${REMARK}
-  type: vless
-  server: ${SERVER_IP}
-  port: ${PORT}
-  uuid: ${UUID}
-  network: tcp
-  udp: true
-  tls: true
-  flow: xtls-rprx-vision
-  servername: ${SELECTED_SNI}
-  reality-opts:
-    public-key: ${PUB}
-    short-id: ${SHORT_ID}
-  client-fingerprint: chrome
-EOF
-
-    # 3. Sing-box 格式
-    read -r -d '' SINGBOX_CONFIG <<EOF
-{
-  "type": "vless",
-  "tag": "${REMARK}",
-  "server": "${SERVER_IP}",
-  "server_port": ${PORT},
-  "uuid": "${UUID}",
-  "flow": "xtls-rprx-vision",
-  "network": "tcp",
-  "tls": {
-    "enabled": true,
-    "server_name": "${SELECTED_SNI}",
-    "utls": { "enabled": true, "fingerprint": "chrome" },
-    "reality": { "enabled": true, "public_key": "${PUB}", "short_id": "${SHORT_ID}" }
-  }
-}
-EOF
-
-    echo -e "\n"
-    green "==========================================="
-    green "          Xray Reality 安装成功！          "
-    green "==========================================="
-    
-    blue "1. V2RayN / v2rayNG (直接复制导入):"
-    echo "$VLESS_LINK"
-    echo "-------------------------------------------"
-    
-    blue "2. Clash Meta / Mihomo (复制到 proxies 列表):"
-    echo "$CLASH_CONFIG"
-    echo "-------------------------------------------"
-    
-    blue "3. Sing-box (复制到 outbounds 列表):"
-    echo "$SINGBOX_CONFIG"
-    green "==========================================="
-}
-
-main() {
-    check_sys
-    get_best_sni
-    install_xray
-    config_xray
-    install_service
     show_results
 }
 
