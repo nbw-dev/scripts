@@ -77,26 +77,50 @@ EOF
 setup_subscription() {
     green "正在配置订阅服务..."
     
-    # 修改 Nginx 默认端口，避免冲突
-    cat <<EOF > /etc/nginx/sites-available/default
-server {
-    listen $SUB_PORT;
-    root $WEB_PATH;
-    index index.html;
-    location / {
-        try_files \$uri \$uri/ =404;
-    }
-}
-EOF
-    systemctl restart nginx
-
-    # 生成 VLESS 链接
+    # 1. 准备节点基础信息
     local REMARK="My_Reality_${SERVER_IP}"
     VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?security=reality&sni=${SELECTED_SNI}&fp=chrome&pbk=${PUB}&sid=${SHORT_ID}&type=tcp&flow=xtls-rprx-vision#${REMARK}"
     
-    # 写入订阅文件 (Base64 编码)
+    # 2. 生成通用订阅 (Base64) - 供 v2rayN/v2rayNG 使用
     mkdir -p $WEB_PATH
     echo -n "$VLESS_LINK" | base64 -w 0 > "$WEB_PATH/$SUB_PATH"
+
+    # 3. 生成 Clash 专用订阅 (YAML) - 供 Clash/FLClash 使用
+    # 这里的路径设为：原路径 + .yaml
+    cat <<EOF > "$WEB_PATH/${SUB_PATH}.yaml"
+port: 7890
+socks-port: 7891
+allow-lan: true
+mode: rule
+log-level: info
+proxies:
+  - name: "${REMARK}"
+    type: vless
+    server: ${SERVER_IP}
+    port: ${PORT}
+    uuid: ${UUID}
+    network: tcp
+    udp: true
+    tls: true
+    flow: xtls-rprx-vision
+    servername: ${SELECTED_SNI}
+    reality-opts:
+      public-key: ${PUB}
+      short-id: ${SHORT_ID}
+    client-fingerprint: chrome
+proxy-groups:
+  - name: 🚀 节点选择
+    type: select
+    proxies:
+      - "${REMARK}"
+      - DIRECT
+rules:
+  - GEOIP,LAN,DIRECT
+  - FINAL,🚀 节点选择
+EOF
+
+    # 4. 重启 Nginx
+    systemctl restart nginx
 }
 
 show_results() {
