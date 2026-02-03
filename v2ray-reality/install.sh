@@ -5,7 +5,7 @@
 
 # 系统要求：Linux 发行版
 # Ubuntu: 20.04, 22.04, 24.04 及更高版本（推荐）
-# Debian: 10, 11, 12 及更高版本
+# Debian: 12 及更高版本
 
 set -e
 
@@ -272,10 +272,12 @@ echo ""
 echo -e "${YELLOW}V2Ray 订阅 (v2rayN / v2rayNG / Shadowrocket):${NC}"
 echo "链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt"
 echo "二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_v2ray_sub.png"
+qrencode -t ansiutf8 "http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt"
 echo ""
 echo -e "${YELLOW}Clash 订阅 (Clash Meta / FlClash / Clash Verge):${NC}"
 echo "链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
 echo "二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_clash_sub.png"
+qrencode -t ansiutf8 "http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
 echo ""
 echo -e "${GREEN}============================================${NC}"
 
