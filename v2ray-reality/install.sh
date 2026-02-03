@@ -33,7 +33,7 @@ echo ""
 
 echo -e "${GREEN}[1/6] 安装依赖...${NC}"
 apt update -y
-apt install -y curl openssl nginx bc
+apt install -y curl openssl nginx bc qrencode
 
 echo -e "${GREEN}[2/6] 安装 Xray...${NC}"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
@@ -143,9 +143,13 @@ VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?encryption=none&flow=xtls-rprx-
 
 echo "${VLESS_LINK}" | base64 -w 0 > "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}.txt"
 
+# 生成 VLESS 二维码图片 (网页端查看)
+qrencode -o "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}_vless.png" "${VLESS_LINK}"
+
 # ============================================
 # Clash Meta 订阅 (YAML 格式)
 # ============================================
+CLASH_SUB_URL="http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
 cat > "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}.yaml" << EOF
 mixed-port: 7890
 allow-lan: true
@@ -198,6 +202,11 @@ rules:
   - MATCH,🚀 节点选择
 EOF
 
+# 生成订阅二维码图片
+qrencode -o "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}_clash_sub.png" "${CLASH_SUB_URL}"
+V2RAY_SUB_URL="http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt"
+qrencode -o "${SUBSCRIBE_DIR}/${SUBSCRIBE_TOKEN}_v2ray_sub.png" "${V2RAY_SUB_URL}"
+
 # ============================================
 # 配置 Nginx
 # ============================================
@@ -211,6 +220,7 @@ server {
         types {
             text/yaml yaml yml;
             text/plain txt;
+            image/png png;
         }
         default_type text/plain;
         add_header Access-Control-Allow-Origin *;
@@ -252,15 +262,20 @@ echo -e "${YELLOW}【VLESS 链接】${NC} (复制到 v2rayN / v2rayNG)"
 echo -e "${GREEN}============================================${NC}"
 echo "${VLESS_LINK}"
 echo ""
+echo -e "${YELLOW}扫描下方二维码直接导入 VLESS (手机端用):${NC}"
+qrencode -t ansiutf8 "${VLESS_LINK}"
+echo ""
 echo -e "${GREEN}============================================${NC}"
 echo -e "${YELLOW}【订阅链接】${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo ""
 echo -e "${YELLOW}V2Ray 订阅 (v2rayN / v2rayNG / Shadowrocket):${NC}"
-echo "http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt"
+echo "链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt"
+echo "二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_v2ray_sub.png"
 echo ""
 echo -e "${YELLOW}Clash 订阅 (Clash Meta / FlClash / Clash Verge):${NC}"
-echo "http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
+echo "链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
+echo "二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_clash_sub.png"
 echo ""
 echo -e "${GREEN}============================================${NC}"
 
@@ -284,10 +299,12 @@ Flow:        xtls-rprx-vision
 ${VLESS_LINK}
 
 【V2Ray 订阅】
-http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt
+链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.txt
+二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_v2ray_sub.png
 
 【Clash 订阅】
-http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml
+链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml
+二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_clash_sub.png
 
 ============================================
 EOF
