@@ -3,6 +3,10 @@
 # 一键部署 Xray Reality 节点
 # 同时生成 Clash 和 V2Ray 订阅链接
 
+# 系统要求：Linux 发行版
+# Ubuntu: 20.04, 22.04, 24.04 及更高版本（推荐）
+# Debian: 10, 11, 12 及更高版本
+
 set -e
 
 # 颜色
@@ -37,7 +41,7 @@ bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release
 echo -e "${GREEN}[3/6] 生成 Reality 密钥对 & 选择最佳 SNI...${NC}"
 
 # 选择最佳 SNI
-SNI_LIST=("www.microsoft.com" "www.apple.com" "www.yahoo.com" "www.samsung.com" "www.amazon.com")
+SNI_LIST=("www.microsoft.com" "www.apple.com" "www.yahoo.com" "www.samsung.com" "www.amazon.com" "www.amd.com" "www.nvidia.com" "www.intel.com" "www.python.org")
 BEST_SNI="www.microsoft.com"
 MIN_LATENCY=9999
 
