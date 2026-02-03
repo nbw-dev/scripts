@@ -1,11 +1,10 @@
 #!/bin/bash
 # nbw-xray-reality-install.sh
-# 一键部署 Xray Reality 节点
-# 同时生成 Clash 和 V2Ray 订阅链接
-
+# 一键部署 Xray Reality 节点，同时生成 Clash 和 V2Ray 订阅链接
 # 系统要求：Linux 发行版
 # Ubuntu: 20.04, 22.04, 24.04 及更高版本（推荐）
 # Debian: 12 及更高版本
+# by 南波丸 @nbw_one
 
 set -e
 
@@ -279,6 +278,9 @@ echo "链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
 echo "二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_clash_sub.png"
 qrencode -t ansiutf8 "http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml"
 echo ""
+echo -e "${YELLOW}电报 Telegram 交流群:${NC}"
+echo "TG: @nbw_club"
+echo ""
 echo -e "${GREEN}============================================${NC}"
 
 # 保存信息到文件
@@ -307,6 +309,9 @@ ${VLESS_LINK}
 【Clash 订阅】
 链接: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}.yaml
 二维码: http://${SERVER_IP}:8080/sub/${SUBSCRIBE_TOKEN}_clash_sub.png
+
+【作者联系方式】
+TG: @nbw_club
 
 ============================================
 EOF
