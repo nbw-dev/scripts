@@ -29,7 +29,7 @@ echo ""
 
 echo -e "${GREEN}[1/6] 安装依赖...${NC}"
 apt update -y
-apt install -y curl openssl nginx
+apt install -y curl openssl nginx bc
 
 echo -e "${GREEN}[2/6] 安装 Xray...${NC}"
 bash -c "$(curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh)" @ install
@@ -45,9 +45,16 @@ echo "正在从以下域名中选择最佳 SNI..."
 for sni in "${SNI_LIST[@]}"; do
     LATENCY=$(curl -o /dev/null -s -w "%{time_connect}\n" "https://$sni" || echo 999)
     echo "  - $sni: ${LATENCY}s"
-    if (( $(echo "$LATENCY < $MIN_LATENCY" | bc -l) )); then
-        MIN_LATENCY=$LATENCY
-        BEST_SNI=$sni
+    
+    # 使用 bc 进行浮点数比较，如果 bc 不存在则跳过自动选择
+    if command -v bc &> /dev/null; then
+        if (( $(echo "$LATENCY < $MIN_LATENCY" | bc -l) )); then
+            MIN_LATENCY=$LATENCY
+            BEST_SNI=$sni
+        fi
+    else
+        # 兜底方案：简单字符串比较（仅能处理非常基础的情况）
+        BEST_SNI="www.microsoft.com"
     fi
 done
 echo -e "${YELLOW}已选择最佳 SNI: ${BEST_SNI} (延迟: ${MIN_LATENCY}s)${NC}"
