@@ -13,7 +13,7 @@ PORT=443
 SUB_PORT=8080
 SUB_PATH=$(openssl rand -hex 6)
 
-# 强制获取 IPv4 地址
+# 强制获取 IPv4
 SERVER_IP=$(curl -s4 http://icanhazip.com || curl -s4 http://ifconfig.me)
 UUID=$(cat /proc/sys/kernel/random/uuid)
 
@@ -21,23 +21,23 @@ UUID=$(cat /proc/sys/kernel/random/uuid)
 green() { echo -e "\033[32m\033[01m$1\033[0m"; }
 blue() { echo -e "\033[36m\033[01m$1\033[0m"; }
 yellow() { echo -e "\033[33m\033[01m$1\033[0m"; }
+magenta() { echo -e "\033[35m$1\033[0m"; }
 red() { echo -e "\033[31m\033[01m$1\033[0m"; }
 
 # 1. 环境准备
 prepare_env() {
-    green "正在准备环境并安装 Nginx..."
+    green "正在准备系统环境..."
     apt update && apt install -y wget curl unzip jq openssl nginx
     systemctl enable nginx && systemctl start nginx
     mkdir -p $INSTALL_PATH $WEB_PATH
 }
 
-# 2. 优选伪装域名 (SNI)
+# 2. 优选 SNI
 get_best_sni() {
     green "正在筛选最佳 SNI..."
     local domains="www.microsoft.com www.python.org itunes.apple.com github.io www.amd.com"
-    SELECTED_SNI="www.microsoft.com" 
+    SELECTED_SNI="www.microsoft.com"
     local best_time=9999
-
     for d in $domains; do
         t1=$(date +%s%3N)
         if timeout 1 openssl s_client -connect $d:443 -servername $d </dev/null &>/dev/null; then
@@ -52,24 +52,35 @@ get_best_sni() {
     green "--> 选定 SNI: ${SELECTED_SNI}"
 }
 
-# 3. 安装 Xray 并获取密钥
+# 3. 安装 Xray (架构自适应 + 密钥强力提取)
 setup_xray() {
-    green "安装 Xray 核心..."
-    local XRAY_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
-    wget -N -O /tmp/xray.zip $XRAY_URL
+    green "检测架构并安装 Xray..."
+    local ARCH=$(uname -m)
+    local V_URL=""
+    if [[ "$ARCH" == "x86_64" ]]; then
+        V_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
+    elif [[ "$ARCH" == "aarch64" ]]; then
+        V_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip"
+    else
+        V_URL="https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip"
+    fi
+
+    wget -N -O /tmp/xray.zip $V_URL
     unzip -o /tmp/xray.zip -d /tmp/xray_bin
     mv /tmp/xray_bin/xray $BIN_PATH && chmod +x $BIN_PATH
 
-    # 关键修复：直接捕捉变量
-    local KEY_INFO=$($BIN_PATH x25519)
-    PK=$(echo "$KEY_INFO" | grep "Private key:" | awk '{print $3}')
-    PUB=$(echo "$KEY_INFO" | grep "Public key:" | awk '{print $3}')
+    # --- 密钥提取核心修复 ---
+    $BIN_PATH x25519 > /tmp/xray_keys.txt 2>&1
+    PK=$(grep "Private key:" /tmp/xray_keys.txt | awk '{print $NF}')
+    PUB=$(grep "Public key:" /tmp/xray_keys.txt | awk '{print $NF}')
     SHORT_ID=$(openssl rand -hex 8)
 
     if [ -z "$PK" ] || [ -z "$PUB" ]; then
-        red "错误：无法生成 Reality 密钥，安装中止！"
+        red "严重错误：无法捕捉到 Reality 密钥！"
+        echo "调试信息：" && cat /tmp/xray_keys.txt
         exit 1
     fi
+    # -----------------------
 
     cat <<EOF > $INSTALL_PATH/config.json
 {
@@ -98,7 +109,7 @@ setup_xray() {
 EOF
 }
 
-# 4. 配置订阅分发
+# 4. 配置订阅 (Nginx + YAML)
 setup_sub() {
     green "配置订阅分发..."
     cat <<EOF > /etc/nginx/sites-available/default
@@ -114,14 +125,12 @@ EOF
     systemctl restart nginx
 
     local REMARK="Reality_$SERVER_IP"
-    
-    # 生成单节点链接
     VLESS_LINK="vless://${UUID}@${SERVER_IP}:${PORT}?security=reality&sni=${SELECTED_SNI}&fp=chrome&pbk=${PUB}&sid=${SHORT_ID}&type=tcp&flow=xtls-rprx-vision#${REMARK}"
 
-    # 1. 通用 Base64 订阅
+    # Base64 订阅
     echo -n "$VLESS_LINK" | base64 -w 0 > "$WEB_PATH/$SUB_PATH"
 
-    # 2. Clash YAML 订阅
+    # Clash YAML 订阅
     cat <<EOF > "$WEB_PATH/${SUB_PATH}.yaml"
 port: 7890
 socks-port: 7891
@@ -155,7 +164,7 @@ EOF
 start_services() {
     cat <<EOF > /etc/systemd/system/xray.service
 [Unit]
-Description=Xray Service
+Description=Xray
 After=network.target
 [Service]
 ExecStart=$BIN_PATH run -c $INSTALL_PATH/config.json
@@ -166,7 +175,6 @@ EOF
     systemctl daemon-reload && systemctl restart xray && systemctl enable xray
 }
 
-# 执行
 main() {
     prepare_env
     get_best_sni
@@ -176,23 +184,18 @@ main() {
     
     echo -e "\n"
     green "==========================================="
-    green "          Xray Reality 安装完成！          "
+    green "          Xray Reality 安装成功！          "
     green "==========================================="
-    
-    blue "1. Clash / FLClash 订阅链接 (YAML):"
+    blue "1. Clash / FLClash 订阅 (推荐):"
     yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}.yaml"
     echo "-------------------------------------------"
-    
-    blue "2. V2RayN / v2rayNG 订阅链接 (Base64):"
+    blue "2. V2RayN / v2rayNG 订阅:"
     yellow "http://${SERVER_IP}:${SUB_PORT}/${SUB_PATH}"
     echo "-------------------------------------------"
-    
-    blue "3. 独立 VLESS 单节点链接 (直接复制导入):"
-    magenta() { echo -e "\033[35m$1\033[0m"; }
+    blue "3. 独立 VLESS 节点 (直接导入):"
     magenta "${VLESS_LINK}"
-    
     green "==========================================="
-    red "提示：请确保云商后台已开启 TCP 443 (节点) 和 8080 (订阅) 端口"
+    red "提示：请务必确保云商后台已开启 TCP 443 和 8080 端口"
     echo -e "\n"
 }
 
