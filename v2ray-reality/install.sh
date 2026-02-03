@@ -45,25 +45,31 @@ echo "正在从以下域名中选择最佳 SNI..."
 for sni in "${SNI_LIST[@]}"; do
     LATENCY=$(curl -o /dev/null -s -w "%{time_connect}\n" "https://$sni" || echo 999)
     echo "  - $sni: ${LATENCY}s"
-    
-    # 使用 bc 进行浮点数比较，如果 bc 不存在则跳过自动选择
-    if command -v bc &> /dev/null; then
-        if (( $(echo "$LATENCY < $MIN_LATENCY" | bc -l) )); then
-            MIN_LATENCY=$LATENCY
-            BEST_SNI=$sni
-        fi
-    else
-        # 兜底方案：简单字符串比较（仅能处理非常基础的情况）
-        BEST_SNI="www.microsoft.com"
+    if (( $(echo "$LATENCY < $MIN_LATENCY" | bc -l) )); then
+        MIN_LATENCY=$LATENCY
+        BEST_SNI=$sni
     fi
 done
 echo -e "${YELLOW}已选择最佳 SNI: ${BEST_SNI} (延迟: ${MIN_LATENCY}s)${NC}"
 
 # 生成密钥
 KEYS=$(/usr/local/bin/xray x25519)
-# 终极兼容提取逻辑: 提取冒号后的内容并清理空格
-PRIVATE_KEY=$(echo "$KEYS" | grep -Ei "private" | head -1 | sed 's/.*: *//' | tr -d ' \r\n')
-PUBLIC_KEY=$(echo "$KEYS" | grep -Ei "password|public" | head -1 | sed 's/.*: *//' | tr -d ' \r\n')
+echo "x25519 原始输出:"
+echo "$KEYS"
+echo "---"
+
+# 直接用 sed 提取 (适配 PrivateKey: xxx 格式)
+PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*PrivateKey: *\([^ ]*\).*/\1/p' | head -1)
+PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Password: *\([^ ]*\).*/\1/p' | head -1)
+
+# 如果上面没提取到，尝试旧格式 (Private key: xxx)
+if [[ -z "$PRIVATE_KEY" ]]; then
+    PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*Private key: *\([^ ]*\).*/\1/p' | head -1)
+fi
+if [[ -z "$PUBLIC_KEY" ]]; then
+    PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Public key: *\([^ ]*\).*/\1/p' | head -1)
+fi
+
 SHORT_ID=$(openssl rand -hex 8)
 
 # 验证密钥
