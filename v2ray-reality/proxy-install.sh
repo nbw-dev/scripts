@@ -65,6 +65,7 @@ cat > /usr/local/etc/xray/config.json << EOF
       "port": ${HTTP_PORT},
       "protocol": "http",
       "settings": {
+        "allowTransparent": true,
         "accounts": [
           {
             "user": "${USER}",
