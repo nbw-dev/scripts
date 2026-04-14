@@ -62,8 +62,9 @@ echo "$KEYS"
 echo "---"
 
 # 直接用 sed 提取 (适配 PrivateKey: xxx 格式)
-PRIVATE_KEY=$(echo "$KEYS" | sed -n 's/.*PrivateKey: *\([^ ]*\).*/\1/p' | head -1)
-PUBLIC_KEY=$(echo "$KEYS" | sed -n 's/.*Password: *\([^ ]*\).*/\1/p' | head -1)
+PRIVATE_KEY=$(printf '%s\n' "$KEYS" | awk -F': ' '/^PrivateKey:|^Private key:/ {print $2; exit}')
+PUBLIC_KEY=$(printf '%s\n' "$KEYS" | awk -F': ' '/^Password \(PublicKey\):|^PublicKey:|^Public key:/ {print $2; exit}')
+
 
 # 如果上面没提取到，尝试旧格式 (Private key: xxx)
 if [[ -z "$PRIVATE_KEY" ]]; then
